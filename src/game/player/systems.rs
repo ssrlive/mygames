@@ -5,8 +5,8 @@ use bevy::window::PrimaryWindow;
 use super::components::Player;
 
 use crate::events::GameOver;
-use crate::game::enemy::components::*;
 use crate::game::enemy::ENEMY_SIZE;
+use crate::game::enemy::{components::*, ENEMY_SPEED};
 use crate::game::score::resources::*;
 use crate::game::star::components::Star;
 use crate::game::star::STAR_SIZE;
@@ -24,7 +24,7 @@ pub fn spawn_player(
     commands.spawn((
         Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
         Sprite::from_image(asset_server.load("sprites/ball_blue_large.png")),
-        Player {},
+        Player::default(),
     ));
 }
 
@@ -34,32 +34,67 @@ pub fn despawn_player(mut commands: Commands, player_query: Query<Entity, With<P
     }
 }
 
+pub fn player_mouse_click(
+    mut player_query: Query<(&Transform, &mut Player)>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    mut cursor: EventReader<CursorMoved>,
+) {
+    if !mouse_button_input.any_just_pressed([MouseButton::Left, MouseButton::Right]) {
+        return;
+    }
+    let Ok((transform, mut player)) = player_query.get_single_mut() else {
+        return;
+    };
+    let Some(cursor_moved) = cursor.read().last() else {
+        return;
+    };
+    let player_position = transform.translation;
+    player.target_position = Some(Vec3::from((cursor_moved.position, player_position.z)));
+
+    bevy::log::info!("Player target position: {:?}", player.target_position);
+    bevy::log::info!("Current player position: {:?}", player_position);
+}
+
 pub fn player_movement(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut player_query: Query<&mut Transform, With<Player>>,
+    mut query: Query<(&mut Transform, &mut Player)>,
     time: Res<Time>,
 ) {
-    if let Ok(mut transform) = player_query.get_single_mut() {
-        let mut direction = Vec3::ZERO;
+    let Ok((mut transform, mut player)) = query.get_single_mut() else {
+        return;
+    };
 
-        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
-            direction += Vec3::new(-1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
-            direction += Vec3::new(1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
-            direction += Vec3::new(0.0, 1.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
-            direction += Vec3::new(0.0, -1.0, 0.0);
-        }
+    let mut direction = Vec3::ZERO;
+    if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+        direction += Vec3::new(-1.0, 0.0, 0.0);
+    }
+    if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
+        direction += Vec3::new(1.0, 0.0, 0.0);
+    }
+    if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
+        direction += Vec3::new(0.0, 1.0, 0.0);
+    }
+    if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
+        direction += Vec3::new(0.0, -1.0, 0.0);
+    }
+    if direction.length() > 0.0 {
+        player.target_position = None;
+        direction = direction.normalize();
+    }
 
-        if direction.length() > 0.0 {
+    match player.target_position {
+        None => transform.translation += direction * PLAYER_SPEED * time.delta_secs(),
+        Some(target_position) => {
+            let player_position = transform.translation;
+            let mut direction = target_position - player_position;
             direction = direction.normalize();
+            let len = direction.length();
+            direction /= len;
+            transform.translation += direction * ENEMY_SPEED * time.delta_secs();
+            if transform.translation.distance(target_position) < PLAYER_SIZE / 4.0 {
+                player.target_position = None;
+            }
         }
-
-        transform.translation += direction * PLAYER_SPEED * time.delta_secs();
     }
 }
 

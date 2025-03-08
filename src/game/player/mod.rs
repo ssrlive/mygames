@@ -18,7 +18,7 @@ impl Plugin for PlayerPlugin {
             // Systems
             .add_systems(
                 Update,
-                (player_movement, confine_player_movement)
+                (player_mouse_click, player_movement, confine_player_movement)
                     .run_if(in_state(AppState::Game).and(in_state(SimulationState::Running))),
             )
             .add_systems(
